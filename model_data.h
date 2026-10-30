@@ -1,0 +1,23 @@
+#ifndef VAMPIREGRAD_GENERATED_MODEL_H
+#define VAMPIREGRAD_GENERATED_MODEL_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+#ifdef __AVR__
+#include <avr/pgmspace.h>
+#define VAMPIREGRAD_MODEL_DATA PROGMEM
+#else
+#define VAMPIREGRAD_MODEL_DATA
+#endif
+
+static const uint8_t vampiregrad_model[] VAMPIREGRAD_MODEL_DATA = {
+    0x56, 0x47, 0x52, 0x44, 0x01, 0x01, 0x01, 0x00, 0x20, 0x00, 0x00, 0x00, 
+    0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 
+    0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x80, 0x3f
+};
+
+#define vampiregrad_model_size ((size_t)32U)
+
+#undef VAMPIREGRAD_MODEL_DATA
+#endif

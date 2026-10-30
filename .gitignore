@@ -1,0 +1,43 @@
+# Editor and OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# AVR/compiler outputs
+*.elf
+*.hex
+*.eep
+*.map
+*.lst
+*.o
+*.obj
+*.a
+*.out
+
+# CMake build trees
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+CTestTestfile.cmake
+Makefile
+Testing/
+
+# Generated binary model exports
+*.bin
+
+# Coverage and profiling output
+*.gcda
+*.gcno
+*.gcov
+perf.data*
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
