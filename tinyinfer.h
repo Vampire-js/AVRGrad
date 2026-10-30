@@ -32,10 +32,16 @@ typedef enum {
     TINYINFER_BUFFER_TOO_SMALL
 } tinyinfer_status_t;
 
+typedef enum {
+    TINYINFER_DTYPE_FLOAT32 = 1,
+    TINYINFER_DTYPE_INT8 = 2
+} tinyinfer_dtype_t;
+
 typedef struct {
     const uint8_t *data;
     size_t size;
     tinyinfer_storage_t storage;
+    tinyinfer_dtype_t dtype;
     uint8_t layer_count;
     uint16_t input_size;
     uint16_t output_size;
@@ -61,6 +67,14 @@ tinyinfer_status_t tinyinfer_predict(
     size_t output_count,
     float *workspace,
     size_t workspace_count);
+
+/* Quantized single-dense-layer inference: uint8 pixels, int8 weights. */
+tinyinfer_status_t tinyinfer_predict_u8(
+    const tinyinfer_model_t *model,
+    const uint8_t *input,
+    size_t input_count,
+    int32_t *scores,
+    size_t score_count);
 
 #ifdef __cplusplus
 }

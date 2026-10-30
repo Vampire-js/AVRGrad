@@ -1,41 +1,65 @@
-# VampireGrad embedded inference
+# VampireGrad MNIST on Arduino Uno
+![alt text](image.png)
+This project trains a 10-class MNIST linear classifier on a desktop, quantizes it to int8, stores its 7,840 weights in AVR flash, and performs inference on an ATmega328P. A browser canvas preprocesses a drawing into a flat 28 × 28 tensor and sends its 784 bytes to the board through Web Serial.
 
-The desktop project trains with `Tensor` and `Value`. Only the trained dense-layer parameters are exported; the autograd graph, gradients, STL containers, and `double` tensors are intentionally not copied to the Arduino Uno.
+The included trained model reaches **92.00% float accuracy** and **91.98% int8 accuracy** on the 10,000-image MNIST test set.
 
-## Exporting a model
+## 1. Train and export
 
-A deployable model uses the host-side structures in `tinygrad/include/model_export.h`:
+Create a Python environment and install the sole dependency:
 
-- `DenseLayer`: rank-2 weights in `[output, input]` row-major order, rank-1 bias, and an activation.
-- `InferenceModel`: an ordered vector of dense layers.
-- `export_model_binary()`: writes a portable binary blob.
-- `export_model_header()`: writes the same blob as an AVR `PROGMEM` C header.
+	python3 -m venv .venv
+	.venv/bin/pip install -r requirements.txt
 
-Run `tinygrad/build.sh` to train the plant-watering example and regenerate `model_data.h`. An optional first argument selects another output path; a `.bin` suffix selects binary output.
+Train and regenerate `model_data.h`:
 
-The example is a one-neuron classifier with two binary inputs: `[soil_is_dry, weather_is_hot]`. It learns to recommend watering when either condition is true. On the Arduino, send two bits over UART: `00` means wet/cool and produces `SKIP`; `01`, `10`, and `11` produce `WATER`. A score of at least `0.5` is classified as `WATER`.
+	.venv/bin/python tools/train_mnist.py
 
-## Arduino API
+The script downloads the official IDX dataset into `.cache/mnist`, validates its headers, normalizes each image, and flattens it into a row-major VampireGrad `Tensor` with shape `[samples, 784]`. It trains softmax regression with minibatch gradient descent, measures both float and quantized accuracy, and emits an AVR `PROGMEM` header.
 
-`tinyinfer.h` is a heap-free C API. `tinyinfer_model_t` is a view over the serialized model rather than a copy, so generated weights remain in flash.
+Useful options include `--epochs`, `--batch-size`, `--learning-rate`, `--seed`, `--cache`, and `--output`.
 
-1. Call `tinyinfer_model_init()` once.
-2. Allocate input/output arrays using `model.input_size` and `model.output_size`.
-3. Allocate `tinyinfer_workspace_floats(&model)` floats of scratch memory.
-4. Call `tinyinfer_predict()`.
+## 2. Build and upload
 
-The input, output, and workspace arrays must not overlap. The engine currently supports float32 dense layers with linear, ReLU, and sigmoid activations. The model's layer dimensions are validated when it is initialized.
+Connect the Uno and run:
 
-## Model format (version 1)
+	./run.sh
 
-All integers and floats are little-endian. Floats use IEEE-754 binary32.
+The firmware validates that the model is int8 with input shape `[784]` and output shape `[10]`. It keeps the image in SRAM, reads weights directly from flash, computes ten int32 dot products, and returns the argmax digit.
 
-- 16-byte model header: `VGRD`, version, dtype, layer count, flags, total byte size, reserved bytes.
-- Per layer, an 8-byte header: input count, output count, activation, reserved bytes.
-- Per layer payload: output-major float32 weights followed by float32 biases.
+Current ATmega328P usage with the installed AVR toolchain:
 
-## Uno resource behavior
+- Program flash: **12,006 bytes (36.6%)**
+- Static SRAM: **872 bytes (42.6%)**
 
-Weights generated in `model_data.h` use `PROGMEM` and consume flash, not SRAM. Runtime SRAM consists primarily of input, output, and two activation buffers. No dynamic allocation, exceptions, recursion, or autograd code is used on the microcontroller.
+## 3. Open the canvas
 
-The included model remains a single dense neuron, keeping its flash and SRAM use small. Model arrays and activation workspaces add resource usage according to model dimensions.
+Serve the frontend from localhost (Web Serial requires a secure context):
+
+	.venv/bin/python -m http.server 8000 -d web
+
+Open `http://localhost:8000` in desktop Chrome or Edge, select **Connect Arduino**, draw one large digit, and select **Classify drawing**. Close serial monitors such as `picocom` first because only one program can own the serial port.
+
+The browser crops the drawing, scales its longest edge to 20 pixels, centers it in a 28 × 28 black image, flattens the grayscale pixels, and transmits the resulting uint8 tensor at 57,600 baud.
+
+## Serial protocol
+
+Each request is binary and has a fixed size:
+
+1. Magic bytes `0x56 0x47` (`VG`)
+2. 784 row-major uint8 pixels
+3. One modulo-256 checksum over the pixels
+
+Responses are newline-terminated ASCII:
+
+- `READY` — firmware initialized
+- `P:7` — predicted digit 7
+- `E:checksum`, `E:model`, `E:shape`, or `E:inference` — error
+
+## Inference library and model format
+
+`tinyinfer.h` exposes both the original float32 dense path and `tinyinfer_predict_u8()` for a single quantized dense layer. Both paths are heap-free.
+
+Version 1 models start with a 16-byte `VGRD` header and an 8-byte dense-layer header. The int8 payload contains a float32 quantization scale, output-major int8 weights, and int32 biases. The scale is retained for host tooling; AVR classification compares raw int32 scores, so it performs no floating-point work.
+
+The older C++ autograd and linear-regression example remains under `tinygrad/`. Its build helper now exports `linear_model_data.h` by default so it does not overwrite the MNIST model.

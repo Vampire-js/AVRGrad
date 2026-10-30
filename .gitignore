@@ -30,6 +30,12 @@ Testing/
 
 # Generated binary model exports
 *.bin
+.cache/
+
+# Python environments and bytecode
+.venv/
+__pycache__/
+*.py[cod]
 
 # Coverage and profiling output
 *.gcda

@@ -2,31 +2,37 @@
 #include "tinyinfer.h"
 
 #include <assert.h>
-#include <math.h>
+#include <string.h>
 
 int main(void)
 {
     tinyinfer_model_t model;
-    float input[] = {4.0f};
-    float output[1];
-    float workspace[2];
+    uint8_t image[784];
+    int32_t scores[10];
+    size_t digit;
+    size_t prediction = 0U;
+
+    memset(image, 0, sizeof(image));
 
     assert(tinyinfer_model_init(
                &model,
                vampiregrad_model,
                vampiregrad_model_size,
                TINYINFER_STORAGE_RAM) == TINYINFER_OK);
-    assert(model.input_size == 1U);
-    assert(model.output_size == 1U);
-    assert(tinyinfer_workspace_floats(&model) == 1U);
-    assert(tinyinfer_predict(
+    assert(model.dtype == TINYINFER_DTYPE_INT8);
+    assert(model.input_size == 784U);
+    assert(model.output_size == 10U);
+    assert(tinyinfer_predict_u8(
                &model,
-               input,
-               1U,
-               output,
-               1U,
-               workspace,
-               2U) == TINYINFER_OK);
-    assert(fabsf(output[0] - 9.0f) < 0.001f);
+               image,
+               784U,
+               scores,
+               10U) == TINYINFER_OK);
+    for (digit = 1U; digit < 10U; ++digit) {
+        if (scores[digit] > scores[prediction]) {
+            prediction = digit;
+        }
+    }
+    assert(prediction == 5U);
     return 0;
 }

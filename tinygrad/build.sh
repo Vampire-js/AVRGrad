@@ -6,4 +6,4 @@ cd "$SCRIPT_DIR"
 
 cmake -S . -B build
 cmake --build ./build
-./build/VampireGrad "${1:-$SCRIPT_DIR/../model_data.h}"
+./build/VampireGrad "${1:-$SCRIPT_DIR/../linear_model_data.h}"

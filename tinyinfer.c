@@ -10,7 +10,6 @@
 #define TINYINFER_MAGIC_1 'G'
 #define TINYINFER_MAGIC_2 'R'
 #define TINYINFER_MAGIC_3 'D'
-#define TINYINFER_DTYPE_FLOAT32 1U
 
 static uint8_t read_u8(const tinyinfer_model_t *model, size_t offset)
 {
@@ -36,6 +35,11 @@ static uint32_t read_u32(const tinyinfer_model_t *model, size_t offset)
            ((uint32_t)read_u8(model, offset + 1U) << 8U) |
            ((uint32_t)read_u8(model, offset + 2U) << 16U) |
            ((uint32_t)read_u8(model, offset + 3U) << 24U);
+}
+
+static int32_t read_i32(const tinyinfer_model_t *model, size_t offset)
+{
+    return (int32_t)read_u32(model, offset);
 }
 
 static float read_f32(const tinyinfer_model_t *model, size_t offset)
@@ -82,6 +86,7 @@ tinyinfer_status_t tinyinfer_model_init(
     model->data = (const uint8_t *)data;
     model->size = size;
     model->storage = storage;
+    model->dtype = (tinyinfer_dtype_t)0;
     model->layer_count = 0U;
     model->input_size = 0U;
     model->output_size = 0U;
@@ -96,7 +101,8 @@ tinyinfer_status_t tinyinfer_model_init(
     if (read_u8(model, 4U) != TINYINFER_FORMAT_VERSION) {
         return TINYINFER_UNSUPPORTED_VERSION;
     }
-    if (read_u8(model, 5U) != TINYINFER_DTYPE_FLOAT32) {
+    model->dtype = (tinyinfer_dtype_t)read_u8(model, 5U);
+    if (model->dtype != TINYINFER_DTYPE_FLOAT32 && model->dtype != TINYINFER_DTYPE_INT8) {
         return TINYINFER_UNSUPPORTED_TYPE;
     }
 
@@ -123,6 +129,10 @@ tinyinfer_status_t tinyinfer_model_init(
             read_u8(model, offset + 5U) != 0U || read_u16(model, offset + 6U) != 0U) {
             return TINYINFER_INVALID_MODEL;
         }
+        if (model->dtype == TINYINFER_DTYPE_INT8 &&
+            (model->layer_count != 1U || activation != TINYINFER_ACTIVATION_LINEAR)) {
+            return TINYINFER_INVALID_MODEL;
+        }
         if (layer != 0U && inputs != previous_outputs) {
             return TINYINFER_INVALID_MODEL;
         }
@@ -133,11 +143,19 @@ tinyinfer_status_t tinyinfer_model_init(
         if (payload_size > SIZE_MAX - outputs) {
             return TINYINFER_INVALID_MODEL;
         }
-        payload_size += outputs;
-        if (payload_size > SIZE_MAX / sizeof(float)) {
-            return TINYINFER_INVALID_MODEL;
+        if (model->dtype == TINYINFER_DTYPE_FLOAT32) {
+            payload_size += outputs;
+            if (payload_size > SIZE_MAX / sizeof(float)) {
+                return TINYINFER_INVALID_MODEL;
+            }
+            payload_size *= sizeof(float);
+        } else {
+            if (payload_size > SIZE_MAX - sizeof(float) ||
+                (size_t)outputs > (SIZE_MAX - payload_size - sizeof(float)) / sizeof(int32_t)) {
+                return TINYINFER_INVALID_MODEL;
+            }
+            payload_size += sizeof(float) + (size_t)outputs * sizeof(int32_t);
         }
-        payload_size *= sizeof(float);
         offset += TINYINFER_LAYER_HEADER_SIZE;
         if (offset > size || payload_size > size - offset) {
             return TINYINFER_INVALID_MODEL;
@@ -187,6 +205,9 @@ tinyinfer_status_t tinyinfer_predict(
         model->layer_count == 0U) {
         return TINYINFER_INVALID_ARGUMENT;
     }
+    if (model->dtype != TINYINFER_DTYPE_FLOAT32) {
+        return TINYINFER_UNSUPPORTED_TYPE;
+    }
     if (input_count != model->input_size || output_count < model->output_size ||
         workspace_count < tinyinfer_workspace_floats(model)) {
         return TINYINFER_BUFFER_TOO_SMALL;
@@ -218,6 +239,50 @@ tinyinfer_status_t tinyinfer_predict(
 
     for (size_t i = 0U; i < model->output_size; ++i) {
         output[i] = current[i];
+    }
+    return TINYINFER_OK;
+}
+
+tinyinfer_status_t tinyinfer_predict_u8(
+    const tinyinfer_model_t *model,
+    const uint8_t *input,
+    size_t input_count,
+    int32_t *scores,
+    size_t score_count)
+{
+    const size_t layer_offset = TINYINFER_HEADER_SIZE;
+    uint16_t inputs;
+    uint16_t outputs;
+    size_t weights_offset;
+    size_t biases_offset;
+    uint16_t out_index;
+
+    if (model == NULL || input == NULL || scores == NULL) {
+        return TINYINFER_INVALID_ARGUMENT;
+    }
+    if (model->dtype != TINYINFER_DTYPE_INT8) {
+        return TINYINFER_UNSUPPORTED_TYPE;
+    }
+    if (input_count != model->input_size || score_count < model->output_size) {
+        return TINYINFER_BUFFER_TOO_SMALL;
+    }
+
+    inputs = read_u16(model, layer_offset);
+    outputs = read_u16(model, layer_offset + 2U);
+    /* The first four payload bytes hold the host-side dequantization scale. */
+    weights_offset = layer_offset + TINYINFER_LAYER_HEADER_SIZE + sizeof(float);
+    biases_offset = weights_offset + (size_t)inputs * outputs;
+
+    for (out_index = 0U; out_index < outputs; ++out_index) {
+        int32_t accumulator = read_i32(model, biases_offset + (size_t)out_index * sizeof(int32_t));
+        uint16_t in_index;
+
+        for (in_index = 0U; in_index < inputs; ++in_index) {
+            const size_t weight_index = (size_t)out_index * inputs + in_index;
+            const int8_t weight = (int8_t)read_u8(model, weights_offset + weight_index);
+            accumulator += (int32_t)input[in_index] * weight;
+        }
+        scores[out_index] = accumulator;
     }
     return TINYINFER_OK;
 }

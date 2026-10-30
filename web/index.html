@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#09090b">
+  <title>VampireGrad · MNIST on Arduino</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div class="eyebrow"><span class="pulse"></span> AVR EDGE INFERENCE</div>
+      <h1>Draw a digit.<br><em>Let the Uno decide.</em></h1>
+      <p class="lede">Your sketch is centered into a 28 × 28 VampireGrad tensor and classified entirely on an Arduino Uno.</p>
+    </header>
+
+    <section class="workspace">
+      <div class="canvas-panel">
+        <div class="panel-heading">
+          <span>INPUT / 28 × 28</span>
+          <button id="clear" class="text-button" type="button">Clear</button>
+        </div>
+        <div class="canvas-frame">
+          <canvas id="digit-canvas" width="280" height="280" aria-label="Draw one digit"></canvas>
+          <div class="grid" aria-hidden="true"></div>
+        </div>
+        <p class="hint">Draw one large digit with your mouse or finger.</p>
+      </div>
+
+      <div class="result-panel">
+        <div class="panel-heading"><span>ATMEGA328P / RESULT</span></div>
+        <div id="prediction" class="prediction" aria-live="polite">—</div>
+        <div class="result-label">PREDICTED DIGIT</div>
+        <div class="status-row">
+          <span id="status-dot" class="status-dot"></span>
+          <span id="status">Not connected</span>
+        </div>
+        <button id="connect" class="primary" type="button">Connect Arduino</button>
+        <button id="classify" class="secondary" type="button" disabled>Classify drawing</button>
+      </div>
+    </section>
+
+    <footer>
+      <span>7,840 int8 weights</span>
+      <span>784-byte serial tensor</span>
+      <span>Zero cloud inference</span>
+    </footer>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
